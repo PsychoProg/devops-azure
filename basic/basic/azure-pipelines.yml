@@ -1,0 +1,50 @@
+trigger:
+- main  # it start pipeline on pushing on main branch
+
+pool: # where the tasks will be executed 
+  vmImage: 'ubuntu-latest' # like a runner, this machine run on cloud
+  # our tasks will execut on a machine where ubuntu latest installed on it
+
+stages: # higher most level
+- stage: BuildApp
+  jobs:
+  - job: BuildPushImage
+    steps: # steps are smallest units like running a script
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'Your_container_registry'
+        repository: 'your_rep_name'
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+        tags: '$(Build.BuildId)'
+
+- stage: scanImage
+  jobs:
+  - job: scanImage
+    steps:  # you can use default tasks of azure in this step
+    - tasks: AzureCLI@2
+      inputs: 
+        azureSubscription: 'Azure'
+        scriptType: 'pscore'
+        scriptLocation: 'scriptPath'
+        scriptPath: '$(Build.SourceDirectory)/scripts/path_to_script/script.bat'
+        arguments: 'script_arguments'
+
+
+#  deploy the service 
+# use task: azure app service deploy
+- stage: deployImage
+  jobs:
+  - job: deployImage
+    steps: 
+    - task: AzureRmWebApplicationDeployment@2
+      ConnectionType: 'AzureRm'
+      azureSubscription: 'Azure'
+      appType: 'webAppContainer'
+      WebAppName: 'app_name'
+      DockerNameSpace: 'docker_registry_name'
+      DockerRepository: 'docker_repo_name'
+      DockerImageTag: '$(Build.BuildId)'
+      
+
+

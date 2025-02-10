@@ -1,0 +1,99 @@
+trigger:
+- main  # it start pipeline on pushing on main branch
+
+pool: # where the tasks will be executed 
+  vmImage: 'ubuntu-latest' # like a runner, this machine run on cloud
+  # our tasks will execut on a machine where ubuntu latest installed on it
+
+variables:
+  IMAGE_REGISTRY_CONNECTION: 'name_of_connection'
+  IMAGE_REGISTRY: 'docker_registry_name'
+  IMAGE_REPO: 'docker_repo_name'
+  TAG: '$(Build.BuildId)'
+
+
+stages: # higher most level
+- stage: BuildApp
+  jobs:
+  - job: BuildPushImage
+    steps: # steps are smallest units like running a script
+    - task: Docker@2
+      inputs:
+        containerRegistry: '($IMAGE_REGISTRY_CONNECTION)'
+        repository: '$(IMAGE_REPO)'
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+        tags: '$(TAG)'
+
+- stage: scanImage
+  jobs:
+  - job: scanImage
+    steps:  # you can use default tasks of azure in this step
+    - tasks: AzureCLI@2
+      inputs: 
+        azureSubscription: 'Azure'
+        scriptType: 'pscore'
+        scriptLocation: 'scriptPath'
+        scriptPath: '$(Build.SourceDirectory)/scripts/path_to_script/script.bat'
+        arguments: 'script_arguments'
+
+
+#  deploy the service 
+# use task: azure app service deploy
+- stage: deployDev
+  jobs:
+  - job: deployDev
+    steps: 
+    - task: AzureRmWebApplicationDeployment@2
+      inputs:
+        ConnectionType: 'AzureRm'
+        azureSubscription: 'Azure'
+        WebAppName: 'app_name_dev'
+        appType: 'webAppContainer'
+        WebAppName: 'app_name'
+        DockerNameSpace: '$(IMAGE_REGISTRY)'
+        DockerRepository: '$(IMAGE_REPO)'
+        DockerImageTag: '$(TAG)'
+
+      
+# deploy test environment
+- stage: deployTest
+  # if deployDev stage was successful and deployTest was scheduled, this stage will deploy on test
+  condition: and(succeeded(), eq(variables['Build.Reason']), 'Schedule')
+  jobs:
+  - job: deployTest
+    steps:  
+    - task: AzureRmWebApplicationDeployment@2
+      inputs:
+        ConnectionType: 'AzureRm'
+        azureSubscription: 'Azure'
+        WebAppName: 'app_name_test'
+        appType: 'webAppContainer'
+        DockerNameSpace: '$(IMAGE_REGISTRY)'
+        DockerRepository: '$(IMAGE_REPO)'
+        DockerImage: '$(TAG)'
+
+
+- stage: deployProd
+  jobs:
+  - job: approveRelease # use manual validation task to approve release
+    timeoutInMinutes: 4320 # timeout in 3 days  
+    pool: server  # where it going to be executed
+    steps:
+    - task: ManualValidation@1
+      timeoutInMinutes: 1440 # task time out in 1 day
+      inputs:
+        notifyUser: 'user@mail.at'
+        instruction: 'Please validate deploy to prod'
+
+  - job: deployProd
+    steps:
+    - task: AzureRmWebApplicationDeployment@2
+      inputs:
+        ConnectionType: 'AzureRm'
+        azureSubscription: 'Azure'
+        WebAppName: 'app_name_prd'
+        appType: 'webAppContainer'
+        DockerNameSpace: '$(IMAGE_REGISTRY)'
+        DockerRepository: '$(IMAGE_REPO)'
+        DockerImage: '$(TAG)'

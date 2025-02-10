@@ -1,0 +1,17 @@
+
+# deploy test environment
+- stage: deployTest
+  # if deployDev stage was successful and deployTest was scheduled, this stage will deploy on test
+  condition: and(succeeded(), eq(variables['Build.Reason']), 'Schedule')
+  jobs:
+  - job: deployTest
+    steps:  
+    - task: AzureRmWebApplicationDeployment@2
+      inputs:
+        ConnectionType: 'AzureRm'
+        azureSu bscription: 'Azure'
+        WebAppName: 'app_name_test'
+        appType: 'webAppContainer'
+        DockerNameSpace: '$(IMAGE_REGISTRY)'
+        DockerRepository: '$(IMAGE_REPO)'
+        DockerImage: '$(TAG)'
